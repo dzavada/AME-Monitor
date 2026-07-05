@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adobe Media Encoder Monitor</title>
+<style>
+  :root {
+    --bg: #15171c;    --panel: #1c1f26;   --panel-2: #20242c;   --line: #2b3038;
+    --ink: #e7e9ee;   --muted: #868d9b;
+    --amber: #efb05a; --blue: #5b93c4;    --green: #62b97f;     --red: #e0625e;  --gray: #545a66;
+    --sans: -apple-system, "SF Pro Text", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+
+  .bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 18px 26px; border-bottom: 1px solid var(--line); }
+  .bar .title { font-size: 13px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; }
+  .bar .title b { color: var(--amber); }
+  .bar .summary { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .bar .summary em { color: var(--ink); font-style: normal; }
+  .bar .spacer { flex: 1; }
+  .bar .beat { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .bar button { background: none; border: 1px solid var(--line); color: var(--muted); font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  .bar button:hover { color: var(--ink); border-color: var(--muted); }
+  .bar .chk { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); cursor: pointer; user-select: none; border: 1px solid var(--line); padding: 5px 10px; border-radius: 6px; }
+  .bar .chk:hover { color: var(--ink); border-color: var(--muted); }
+  .bar .chk input { accent-color: var(--amber); cursor: pointer; margin: 0; }
+  .alarmpill { display: none; font-family: var(--mono); font-size: 11px; color: #1a0d0d; background: var(--red); padding: 5px 11px; border-radius: 20px; font-weight: 700; }
+  .alarmpill.show { display: inline-block; }
+
+  .grid { display: grid; gap: 16px; padding: 22px 26px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 14px; position: relative; overflow: hidden; }
+  .card.off { opacity: .6; }
+  .card .accent { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--gray); }
+  .card.encoding .accent { background: var(--amber); }
+  .card.online .accent { background: var(--blue); }
+  .card.paused .accent { background: var(--muted); }
+  .card.alert { animation: flash 1s steps(1,end) infinite; }
+  @keyframes flash { 0%,49% { box-shadow: inset 0 0 0 2px var(--red), 0 0 0 1px var(--red); background: #251a1c; } 50%,100% { box-shadow: inset 0 0 0 2px transparent; background: var(--panel); } }
+  .card.alert .accent { background: var(--red); }
+
+  .head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gray); flex: none; }
+  .card.encoding .dot { background: var(--amber); animation: pulse 1.6s ease-in-out infinite; }
+  .card.online .dot { background: var(--blue); }
+  .card.paused .dot { background: var(--muted); }
+  .card.alert .dot { background: var(--red); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .name { font-size: 15px; font-weight: 650; }
+  .ver { font-family: var(--mono); font-size: 9.5px; color: var(--gray); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  .bar .dver { font-family: var(--mono); font-size: 10px; color: var(--gray); }
+  .badge { margin-left: auto; font-family: var(--mono); font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); padding: 3px 8px; border: 1px solid var(--line); border-radius: 20px; }
+  .card.encoding .badge { color: var(--amber); border-color: rgba(239,176,90,.4); }
+  .card.online .badge { color: var(--blue); border-color: rgba(91,147,196,.4); }
+  .card.alert .badge { color: var(--red); border-color: rgba(224,98,94,.5); }
+
+  .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: #0e1014; margin-bottom: 12px; display: none; }
+  .thumb.show { display: block; }
+  .thumbnote { display: none; font-family: var(--mono); font-size: 10.5px; color: var(--amber); margin-bottom: 10px; }
+  .thumbnote.show { display: block; }
+
+  .wfbig { display: none; align-items: baseline; gap: 8px; margin: 4px 0 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+  .wfbig.show { display: flex; }
+  .wfbig .wfn { font-family: var(--mono); font-size: 26px; font-variant-numeric: tabular-nums; color: var(--blue); line-height: 1; }
+  .wfbig .wfl { font-size: 12px; color: var(--muted); }
+  .wfbig .wfmiss { color: var(--red); font-size: 11px; font-family: var(--mono); }
+  .wfbig.hint { display: flex; background: none; border: 1px dashed var(--line); }
+  .wfbig.hint .wfl { color: var(--gray); }
+
+  .jobname { font-family: var(--mono); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jobname.idle { color: var(--muted); }
+  .paths { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 4px; line-height: 1.6; word-break: break-all; }
+  .paths .lab { color: var(--gray); } .paths .out { color: #b9c0cc; }
+
+  .render { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; }
+  .track { flex: 1; height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+  .fill { height: 100%; width: 0%; background: var(--amber); border-radius: 4px; transition: width .6s cubic-bezier(.2,.7,.3,1); position: relative; }
+  .fill.audio { background: var(--blue); }
+  .card.encoding .fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.28) 50%, transparent 70%); background-size: 220% 100%; animation: sheen 1.5s linear infinite; }
+  @keyframes sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  .fill.indet { width: 30% !important; animation: indet 1.4s ease-in-out infinite; }
+  @keyframes indet { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+  .pct { font-family: var(--mono); font-size: 21px; font-variant-numeric: tabular-nums; min-width: 60px; text-align: right; color: var(--muted); }
+  .card.encoding .pct { color: var(--amber); }
+  .meta { display: flex; gap: 12px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-bottom: 12px; min-height: 14px; }
+  .meta .phase { text-transform: uppercase; letter-spacing: .5px; }
+  .meta .phase.audio { color: var(--blue); } .meta .phase.video { color: var(--amber); }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); padding-top: 12px; }
+  .stat .num { font-family: var(--mono); font-size: 17px; font-variant-numeric: tabular-nums; }
+  .stat .lbl { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+  .stat .num.q { color: var(--blue); } .stat .num.d { color: var(--green); } .stat .num.f { color: var(--red); }
+
+  .watch { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .watch.show { display: block; }
+  .watch .wlabel { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 8px; }
+  .watch .wrow { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .watch .wn { font-family: var(--mono); font-size: 12px; color: var(--ink); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .watch .wtag { color: var(--gray); font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; }
+  .watch .wleft { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .watch .wleft b { font-size: 20px; color: var(--blue); }
+  .watch .wleft span { font-size: 11px; color: var(--muted); }
+  .watch .wdone { font-family: var(--mono); font-size: 11px; color: var(--green); flex: none; }
+  .watch .wmiss { font-family: var(--mono); font-size: 11px; color: var(--red); }
+
+  .recent { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .recent.show { display: block; }
+  .recent .rlabel { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 7px; }
+  .recent .rrow { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 2px 0; }
+  .recent .rrow .rn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9c0cc; }
+  .recent .rrow .rt { color: var(--green); flex: none; }
+
+  .health { display: flex; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .h { flex: 1; }
+  .h .hl { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+  .h .hl b { font-family: var(--mono); color: var(--ink); font-weight: 500; }
+  .h .hbar { height: 4px; background: var(--panel-2); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .h .hbar i { display: block; height: 100%; width: 0%; background: var(--blue); border-radius: 3px; }
+  .h .hbar i.warn { background: var(--amber); } .h .hbar i.crit { background: var(--red); }
+
+  .controls { display: flex; gap: 8px; margin-top: 13px; }
+  .controls button { flex: 1; font-family: var(--sans); font-size: 12px; font-weight: 600; padding: 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; }
+  .controls button:hover { border-color: var(--muted); }
+  .controls button:disabled { opacity: .35; cursor: default; }
+  .controls .resume.on { background: rgba(98,185,127,.16); border-color: var(--green); color: var(--green); }
+  .controls .stop:hover { border-color: var(--red); color: var(--red); }
+  .ack { margin-top: 10px; width: 100%; font-size: 12px; font-weight: 600; padding: 8px; border-radius: 7px; border: 1px solid var(--red); background: rgba(224,98,94,.14); color: var(--red); cursor: pointer; display: none; }
+  .ack.show { display: block; }
+
+  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; padding: 20px; overflow: auto; }
+  .mask.show { display: flex; }
+  .sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: 100%; max-width: 480px; padding: 22px; }
+  .sheet h2 { margin: 0 0 4px; font-size: 15px; }
+  .sheet p { margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .sheet label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); display: block; margin: 14px 0 6px; }
+  .sheet input, .sheet textarea { width: 100%; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); font-family: var(--mono); font-size: 12px; padding: 9px 11px; border-radius: 7px; }
+  .sheet textarea { resize: vertical; min-height: 70px; }
+  .sheet input:focus, .sheet textarea:focus { outline: none; border-color: var(--blue); }
+  .sheet .acts { display: flex; gap: 10px; margin-top: 18px; }
+  .sheet .save { flex: 1; border: none; border-radius: 8px; padding: 11px; font-size: 12px; font-weight: 700; background: var(--blue); color: #0b0d11; cursor: pointer; }
+  .empty { padding: 60px 26px; text-align: center; color: var(--muted); font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .dot, .fill::after, .fill.indet { animation: none !important; } .card.alert { animation: none; box-shadow: inset 0 0 0 2px var(--red); background: #251a1c; } }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="title">Adobe Media Encoder <b>Monitor</b></div>
+    <span class="dver" id="dver"></span>
+    <div class="summary" id="summary">—</div>
+    <span class="alarmpill" id="alarm">⚠ 0</span>
+    <div class="spacer"></div>
+    <div class="beat" id="beat"></div>
+    <label class="chk" title="Show a live preview frame of the file being encoded"><input type="checkbox" id="thumbsChk"> thumbnails</label>
+    <button id="sound">🔕 sound off</button>
+    <button id="gear">settings</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none">No machines configured. Click <b>settings</b> to add your Macs.</div>
+
+  <div class="mask" id="mask">
+    <div class="sheet">
+      <h2>Settings</h2>
+      <p>Machines as <code>host:port</code>, one per line. Use LAN IPs if <code>.local</code> names don't resolve.</p>
+      <label>Machines</label>
+      <textarea id="hostsBox" placeholder="mac-render-1.local:8642&#10;mac-render-2.local:8642"></textarea>
+      <label>Control token (must match TOKEN in each agent's main.js)</label>
+      <input id="tokenBox" placeholder="changeme">
+      <label>Watch folders — optional. Auto-discovered by default; add lines only to override, as <code>host:port&nbsp;&nbsp;/path/on/that/mac</code></label>
+      <textarea id="watchBox" placeholder="(leave blank to auto-discover)"></textarea>
+      <p style="margin-top:6px">Agents find AME watch folders on their own (folders containing Source + Output). Counts the files waiting and ticks down as each is encoded.</p>
+      <label>Thumbnail folder — optional. Folder on each machine where preview frames are written (leave blank for the system temp dir)</label>
+      <input id="thumbDirBox" placeholder="/tmp">
+      <div class="acts"><button class="save" id="save">Save</button></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var DASH_VERSION = "1.3.4";
+  var POLL_MS = 1500, TIMEOUT_MS = 2500, THUMB_BUCKET = 4000;
+  var KEY_H = "ame_monitor_hosts", KEY_T = "ame_monitor_token", KEY_S = "ame_monitor_sound", KEY_W = "ame_monitor_watch", KEY_TH = "ame_monitor_thumbs", KEY_TD = "ame_monitor_thumbdir";
+  var DEFAULTS = ["mac-render-1.local:8642", "mac-render-2.local:8642", "mac-render-3.local:8642"];
+
+  function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  var hosts = (function () { try { return JSON.parse(lsGet(KEY_H, "")) || DEFAULTS.slice(); } catch (e) { return DEFAULTS.slice(); } })();
+  var token = lsGet(KEY_T, "changeme");
+  var soundOn = lsGet(KEY_S, "0") === "1";
+  var thumbsOn = lsGet(KEY_TH, "1") === "1";
+  var watchText = lsGet(KEY_W, "");            // raw "host  /path" lines
+  var thumbDir = lsGet(KEY_TD, "");            // preview frames folder pushed to agents
+  var pushed = {};                              // host -> true once config pushed this session
+
+  var grid = document.getElementById("grid");
+  var cards = {}, mem = {};
+
+  function watchMapFromText(txt) {              // -> { host: [paths] }
+    var map = {};
+    txt.split("\n").forEach(function (line) {
+      line = line.trim(); if (!line) return;
+      var m = line.match(/^(\S+)\s+(.+)$/); if (!m) return;
+      (map[m[1]] = map[m[1]] || []).push(m[2].trim());
+    });
+    return map;
+  }
+
+  function pushConfig(h) {
+    var map = watchMapFromText(watchText);
+    var paths = (map[h] || []).join("\n");
+    return fetch("http://" + h + "/config?watch=" + encodeURIComponent(paths) + "&thumbdir=" + encodeURIComponent(thumbDir))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok === false) return { host: h, err: j.error || "agent rejected config" };
+        pushed[h] = true; return { host: h };
+      })
+      .catch(function () { return { host: h, err: "unreachable" }; });
+  }
+
+  function buildCards() {
+    grid.innerHTML = ""; cards = {}; pushed = {};
+    document.getElementById("empty").style.display = hosts.length ? "none" : "block";
+    hosts.forEach(function (h) {
+      if (!mem[h]) mem[h] = { online: false, failed: 0, ackFailed: 0 };
+      var c = document.createElement("div");
+      c.className = "card off";
+      c.innerHTML =
+        '<div class="accent"></div>' +
+        '<div class="head"><span class="dot"></span><span class="name"></span><span class="ver"></span><span class="badge">offline</span></div>' +
+        '<img class="thumb" alt=""><div class="thumbnote"></div>' +
+        '<div class="wfbig"></div>' +
+        '<div class="jobname idle">—</div><div class="paths"></div>' +
+        '<div class="render"><div class="track"><div class="fill"></div></div><div class="pct">—</div></div>' +
+        '<div class="meta"><span class="phase"></span><span class="time"></span></div>' +
+        '<div class="stats">' +
+          '<div class="stat"><div class="num q">0</div><div class="lbl">queue</div></div>' +
+          '<div class="stat"><div class="num d">0</div><div class="lbl">done</div></div>' +
+          '<div class="stat"><div class="num f">0</div><div class="lbl">failed</div></div></div>' +
+        '<div class="watch"></div><div class="recent"></div>' +
+        '<div class="health">' +
+          '<div class="h"><div class="hl">CPU <b class="cpuv">–</b></div><div class="hbar"><i class="cpu"></i></div></div>' +
+          '<div class="h"><div class="hl">RAM <b class="memv">–</b></div><div class="hbar"><i class="mem"></i></div></div>' +
+          '<div class="h"><div class="hl">DISK <b class="diskv">–</b></div><div class="hbar"><i class="disk"></i></div></div></div>' +
+        '<div class="controls"><button class="pause">Pause</button><button class="resume">Resume</button><button class="stop">Stop</button></div>' +
+        '<button class="ack">Acknowledge failure</button>';
+      grid.appendChild(c);
+      c.querySelector(".name").textContent = h.split(":")[0];
+      var q = function (s) { return c.querySelector(s); };
+      var card = { card: c, badge: q(".badge"), ver: q(".ver"), job: q(".jobname"), paths: q(".paths"), thumb: q(".thumb"), thumbnote: q(".thumbnote"), wfbig: q(".wfbig"),
+        fill: q(".fill"), pct: q(".pct"), phase: q(".phase"), time: q(".time"), watch: q(".watch"), recent: q(".recent"),
+        q: q(".num.q"), d: q(".num.d"), f: q(".num.f"),
+        cpu: q("i.cpu"), cpuv: q(".cpuv"), mem: q("i.mem"), memv: q(".memv"), disk: q("i.disk"), diskv: q(".diskv"),
+        pause: q(".pause"), resume: q(".resume"), stop: q(".stop"), ack: q(".ack") };
+      cards[h] = card;
+      card.thumb.onload = function () { card.thumb.className = "thumb show"; };
+      card.thumb.onerror = function () { card.thumb.className = "thumb"; };
+      card.pause.onclick = function () { control(h, "pause"); };
+      card.resume.onclick = function () { control(h, "resume"); };
+      card.stop.onclick = function () { if (confirm("Stop encoding on " + h.split(":")[0] + "? The current job will be cancelled.")) control(h, "stop"); };
+      card.ack.onclick = function () { mem[h].ackFailed = mem[h].failed; card.ack.className = "ack"; refreshAlarm(); };
+    });
+  }
+
+  function control(h, action) {
+    fetch("http://" + h + "/control?action=" + action + "&token=" + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.ok) alert("Command rejected: " + (j.error || "unknown") + (j.error === "bad token" ? " — set the matching token in settings." : "")); })
+      .catch(function () { alert("Couldn't reach " + h + " — is it online?"); });
+  }
+
+  function poll() {
+    var encoding = 0;
+    var jobs = hosts.map(function (h) {
+      var ctrl = new AbortController(), t = setTimeout(function () { ctrl.abort(); }, TIMEOUT_MS);
+      return fetch("http://" + h + "/status", { signal: ctrl.signal, cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { clearTimeout(t); render(h, j); selfHeal(h, j); return j; })
+        .catch(function () { clearTimeout(t); offline(h); return null; });
+    });
+    Promise.all(jobs).then(function (res) {
+      res.forEach(function (j) { if (j && j.state && (j.state.current || j.state.running)) encoding++; });
+      var up = res.filter(Boolean).length;
+      document.getElementById("summary").innerHTML = "<em>" + up + "</em>/" + hosts.length + " online · <em>" + encoding + "</em> encoding";
+      document.getElementById("beat").textContent = "updated " + new Date().toLocaleTimeString();
+      refreshAlarm();
+    });
+  }
+
+  // if an agent has no watch folders set but the dashboard has a path for it, push once
+  function selfHeal(h, j) {
+    if (pushed[h]) return;
+    var map = watchMapFromText(watchText), want = map[h] || [];
+    var have = (j && j.watchConfigured) || [];
+    var thumbMismatch = thumbDir && j && j.thumbDir && j.thumbDir !== thumbDir.replace(/[\/\\]+$/, "");
+    if ((want.length && have.join("|") !== want.join("|")) || thumbMismatch) pushConfig(h); else pushed[h] = true;
+  }
+
+  function offline(h) {
+    var c = cards[h]; if (!c) return;
+    mem[h].online = false; c.card.className = "card off alert"; c.badge.textContent = "offline";
+    c.job.className = "jobname idle"; c.job.textContent = "unreachable"; c.paths.innerHTML = "";
+    c.pct.textContent = "—"; c.fill.style.width = "0%"; c.fill.className = "fill"; c.phase.textContent = ""; c.time.textContent = "";
+    c.thumb.className = "thumb"; c.thumb.removeAttribute("src");
+    c.thumbnote.className = "thumbnote"; c.wfbig.className = "wfbig";
+    renderWatch(c, null); renderRecent(c, null);
+    c.pause.disabled = c.resume.disabled = c.stop.disabled = true; c.ack.className = "ack";
+  }
+
+  function render(h, j) {
+    var c = cards[h]; if (!c) return;
+    var s = j.state || {}, hh = j.health || {};
+    mem[h].online = true; mem[h].failed = s.failed || 0;
+    c.ver.textContent = j.version ? ("v" + j.version) : "";
+    var newFailure = mem[h].failed > mem[h].ackFailed;
+    var cls = "card";
+
+    var active = s.current || s.running;
+    if (active) {
+      var paused = s.batchState === "paused";
+      cls += paused ? " paused" : " encoding";
+      c.badge.textContent = paused ? "paused" : "encoding";
+      var nm = (s.current && s.current.name) || (j.currentGuess && j.currentGuess.name) || "encoding…";
+      c.job.className = "jobname"; c.job.textContent = nm;
+      var src = (s.current && s.current.source) || (j.currentGuess && j.currentGuess.full) || "";
+      var out = (s.current && s.current.output) || "";
+      c.paths.innerHTML = pathLine(src, out); c.paths.title = src + (out ? "  →  " + out : "");
+      var hasPct = s.current && s.current.percent > 0;
+      if (hasPct) {
+        var pct = s.current.percent;
+        c.fill.className = "fill" + (s.current.phase === "audio" ? " audio" : "");
+        c.fill.style.width = pct + "%"; c.pct.textContent = pct + "%";
+        c.phase.className = "phase " + (s.current.phase || "video"); c.phase.textContent = (s.current.phase || "video") + " pass";
+        c.time.textContent = (s.current.startedAt ? timing(s.current.startedAt, pct) : "");
+      } else {
+        c.fill.className = "fill indet"; c.fill.style.width = ""; c.pct.textContent = "·";
+        c.phase.className = "phase"; c.phase.textContent = "starting"; c.time.textContent = "";
+      }
+      if (thumbsOn) {
+        var bucket = "http://" + h + "/thumb?b=" + Math.floor(Date.now() / THUMB_BUCKET);
+        if (c.thumb.getAttribute("data-b") !== bucket) { c.thumb.setAttribute("data-b", bucket); c.thumb.src = bucket; }
+      } else {
+        c.thumb.className = "thumb"; c.thumb.removeAttribute("src"); c.thumb.removeAttribute("data-b");
+      }
+    } else {
+      cls += (s.batchState === "paused") ? " paused" : " online";
+      c.badge.textContent = (s.batchState && s.batchState !== "idle") ? s.batchState : "idle";
+      c.job.className = "jobname idle"; c.job.textContent = "idle";
+      c.paths.innerHTML = ""; c.pct.textContent = "—"; c.fill.style.width = "0%"; c.fill.className = "fill";
+      c.phase.textContent = ""; c.time.textContent = "";
+      c.thumb.className = "thumb"; c.thumb.removeAttribute("src"); c.thumb.removeAttribute("data-b");
+    }
+    if (newFailure) cls += " alert";
+    c.card.className = cls;
+
+    c.q.textContent = s.queued || 0; c.d.textContent = s.completed || 0; c.f.textContent = s.failed || 0;
+    renderWatchBig(c, j.watchConfigured, j.watch, j.autoDiscover);
+    renderWatch(c, j.watch); renderRecent(c, j.recentFiles);
+    // preview status: show why there's no thumbnail
+    var ts = j.thumbStatus || "";
+    if (thumbsOn && active && ts && ts !== "ok" && ts !== "idle") {
+      c.thumbnote.className = "thumbnote show";
+      c.thumbnote.textContent = "no preview — " + thumbReason(ts);
+    } else { c.thumbnote.className = "thumbnote"; c.thumbnote.textContent = ""; }
+    meter(c.cpu, c.cpuv, hh.cpu, "%"); meter(c.mem, c.memv, hh.memPct, "%"); diskMeter(c.disk, c.diskv, hh.diskFreeGB);
+
+    var p2 = s.batchState === "paused";
+    c.resume.className = "resume" + (p2 ? " on" : "");
+    c.pause.disabled = p2 || !active; c.resume.disabled = !p2; c.stop.disabled = !active && !p2;
+    c.ack.className = "ack" + (newFailure ? " show" : "");
+  }
+
+  function pathLine(src, out) {
+    var html = "";
+    if (src) html += '<div><span class="lab">src </span>' + escapeHtml(base(src)) + '</div>';
+    if (out) html += '<div><span class="lab">out </span><span class="out">' + escapeHtml(base(out)) + '</span></div>';
+    return html;
+  }
+  function renderWatchBig(c, configured, arr, auto) {
+    if (!configured || !configured.length) {
+      c.wfbig.className = "wfbig hint show";
+      c.wfbig.innerHTML = '<span class="wfl">' + (auto
+        ? "no watch folders found yet — make sure AME is running and has encoded at least once"
+        : "no watch folder set — add one in settings") + '</span>';
+      return;
+    }
+    var total = 0, missing = false;
+    (arr || []).forEach(function (w) { if (w.exists === false) missing = true; else total += (w.remaining || 0); });
+    c.wfbig.className = "wfbig show";
+    c.wfbig.innerHTML = '<span class="wfn">' + total + '</span>' +
+      '<span class="wfl">file' + (total === 1 ? "" : "s") + ' in watch folder' + ((arr && arr.length > 1) ? "s" : "") + '</span>' +
+      (missing ? '<span class="wfmiss">· folder not found</span>' : "");
+  }
+  function thumbReason(ts) {
+    if (ts.indexOf("err") === 0) return "AME preview call failed (version may not support it)";
+    if (ts.indexOf("sips") === 0) return "image conversion failed";
+    if (ts === "no-host") return "AME not ready";
+    return ts;
+  }
+  function renderWatch(c, arr) {
+    if (!arr || !arr.length) { c.watch.className = "watch"; c.watch.innerHTML = ""; return; }
+    c.watch.className = "watch show";
+    c.watch.innerHTML = '<div class="wlabel">watch folders</div>' + arr.map(function (w) {
+      if (w.exists === false) return '<div class="wrow"><span class="wn">' + escapeHtml(w.name) + '</span><span class="wmiss">folder not found</span></div>';
+      return '<div class="wrow"><span class="wn">' + escapeHtml(w.name) + (w.source === "auto" ? ' <span class="wtag">auto</span>' : "") + '</span>' +
+             '<span class="wleft"><b>' + (w.remaining || 0) + '</b> <span>left</span></span>' +
+             '<span class="wdone">' + (w.done || 0) + ' done</span></div>';
+    }).join("");
+  }
+  function renderRecent(c, arr) {
+    if (!arr || !arr.length) { c.recent.className = "recent"; c.recent.innerHTML = ""; return; }
+    c.recent.className = "recent show";
+    c.recent.innerHTML = '<div class="rlabel">recently completed</div>' + arr.slice(0, 5).map(function (r) {
+      return '<div class="rrow"><span class="rn">' + escapeHtml(r.name) + '</span><span class="rt">✓ ' + ago(r.ts) + '</span></div>';
+    }).join("");
+  }
+  function ago(ts) { var s = Math.max(0, Math.round((Date.now() - ts) / 1000)); if (s < 60) return s + "s"; var m = Math.floor(s / 60); if (m < 60) return m + "m"; return Math.floor(m / 60) + "h"; }
+
+  function meter(bar, label, val, suffix) {
+    val = (typeof val === "number") ? val : 0;
+    bar.style.width = Math.min(100, val) + "%";
+    bar.className = bar.className.split(" ")[0] + (val >= 90 ? " crit" : val >= 70 ? " warn" : "");
+    label.textContent = val + (suffix || "");
+  }
+  function diskMeter(bar, label, freeGB) {
+    freeGB = (typeof freeGB === "number") ? freeGB : 0;
+    label.textContent = freeGB >= 1 ? (freeGB + " GB") : Math.round(freeGB * 1024) + " MB";
+    bar.style.width = Math.max(4, Math.min(100, freeGB)) + "%";
+    bar.className = "disk" + (freeGB < 20 ? " crit" : freeGB < 80 ? " warn" : "");
+  }
+  function base(p) { if (!p) return ""; return String(p).replace(/[\/\\]+$/, "").split(/[\/\\]/).pop(); }
+  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, function (m) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[m]; }); }
+  function timing(startedAt, pct) {
+    if (!startedAt) return ""; var el = (Date.now() - startedAt) / 1000, s = "elapsed " + fmt(el);
+    if (pct > 2 && pct < 100) s += " · eta " + fmt(el * (100 - pct) / pct); return s;
+  }
+  function fmt(sec) { sec = Math.max(0, Math.round(sec)); var m = Math.floor(sec / 60), s = sec % 60; return m >= 60 ? (Math.floor(m / 60) + "h" + (m % 60) + "m") : (m + "m" + (s < 10 ? "0" : "") + s + "s"); }
+
+  var prevAlarm = 0;
+  function refreshAlarm() {
+    var n = 0;
+    hosts.forEach(function (h) { if (!mem[h]) return; if (!mem[h].online) n++; else if (mem[h].failed > mem[h].ackFailed) n++; });
+    var pill = document.getElementById("alarm");
+    pill.textContent = "⚠ " + n; pill.className = "alarmpill" + (n > 0 ? " show" : "");
+    document.title = (n > 0 ? "(" + n + ") " : "") + "Adobe Media Encoder Monitor";
+    if (n > prevAlarm && soundOn) beep(); prevAlarm = n;
+  }
+  var actx;
+  function beep() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = 660; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(.0001, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.2, actx.currentTime + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + .35);
+      o.start(); o.stop(actx.currentTime + .36);
+    } catch (e) {}
+  }
+
+  var mask = document.getElementById("mask");
+  document.getElementById("gear").onclick = function () {
+    document.getElementById("hostsBox").value = hosts.join("\n");
+    document.getElementById("tokenBox").value = token;
+    document.getElementById("watchBox").value = watchText;
+    document.getElementById("thumbDirBox").value = thumbDir;
+    mask.className = "mask show";
+  };
+  document.getElementById("save").onclick = function () {
+    hosts = document.getElementById("hostsBox").value.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+    token = document.getElementById("tokenBox").value.trim() || "changeme";
+    watchText = document.getElementById("watchBox").value;
+    thumbDir = document.getElementById("thumbDirBox").value.trim();
+    lsSet(KEY_H, JSON.stringify(hosts)); lsSet(KEY_T, token); lsSet(KEY_W, watchText); lsSet(KEY_TD, thumbDir);
+    mask.className = "mask"; buildCards();
+    // push watch/thumb config to every agent and report anything that failed
+    Promise.all(hosts.map(function (h) { return pushConfig(h); })).then(function (results) {
+      var bad = results.filter(function (r) { return r && r.err; });
+      if (bad.length) alert("Settings saved, but some agents didn't apply them:\n\n" +
+        bad.map(function (r) { return r.host + " — " + r.err; }).join("\n") +
+        "\n\nCheck the path exists (or is creatable) on that machine and that the agent is online.");
+    });
+    poll();
+  };
+  mask.onclick = function (e) { if (e.target === mask) mask.className = "mask"; };
+
+  var tchk = document.getElementById("thumbsChk");
+  tchk.checked = thumbsOn;
+  tchk.onchange = function () {
+    thumbsOn = tchk.checked; lsSet(KEY_TH, thumbsOn ? "1" : "0");
+    if (!thumbsOn) Object.keys(cards).forEach(function (h) {
+      var c = cards[h];
+      c.thumb.className = "thumb"; c.thumb.removeAttribute("src"); c.thumb.removeAttribute("data-b");
+      c.thumbnote.className = "thumbnote"; c.thumbnote.textContent = "";
+    });
+    poll();
+  };
+
+  var sbtn = document.getElementById("sound");
+  function paintSound() { sbtn.textContent = soundOn ? "🔔 sound on" : "🔕 sound off"; }
+  sbtn.onclick = function () { soundOn = !soundOn; lsSet(KEY_S, soundOn ? "1" : "0"); paintSound(); if (soundOn) beep(); };
+  paintSound();
+
+  document.getElementById("dver").textContent = "v" + DASH_VERSION;
+  buildCards(); poll(); setInterval(poll, POLL_MS);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="9.0" ExtensionBundleId="com.amemonitor.agent"
+    ExtensionBundleVersion="1.3.3" ExtensionBundleName="Adobe Media Encoder Monitor"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.amemonitor.agent.panel" Version="1.3.3"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <!-- AME = Adobe Media Encoder. Range covers 2019 (14) .. far future. -->
+      <Host Name="AME" Version="[14.0,99.9]"/>
+    </HostList>
+    <LocaleList><Locale Code="All"/></LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="9.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.amemonitor.agent.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+          <!-- Start the agent automatically when AME launches, even if the panel
+               window isn't opened. Keeps the HTTP server alive headless. -->
+          <StartOn><Event>applicationActivate</Event></StartOn>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Adobe Media Encoder Monitor</Menu>
+          <Geometry>
+            <Size><Height>220</Height><Width>320</Width></Size>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
